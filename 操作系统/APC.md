@@ -10,7 +10,7 @@
     - [3.2. 挂入流程](#32-挂入流程)
     - [3.3. KeInitializeAPC](#33-keinitializeapc)
         - [3.3.1. 函数定义](#331-函数定义)
-        - [3.3.2. ApcStateIndex](#332-apcstateindex)
+        - [3.3.2. TargetEnvironment](#332-targetenvironment)
     - [3.4. KeInsertQueueAPC](#34-keinsertqueueapc)
 - [4. APC的执行时机](#4-apc的执行时机)
 
@@ -76,7 +76,7 @@ QueueUserAPC(位于Kernel32.dll)，该函数会调用NtQueueApcThread(位于ntos
 VOID KeInitializeApc ( 
     IN PKAPC Apc,    //KAPC指针
     IN PKTHREAD Thread, //目标线程
-    IN KAPC_ENVIRONMENT TargetEnvironment,   //标识希望APC挂在哪个队列，与KAPC.ApcStateIndex相对应
+    IN KAPC_ENVIRONMENT TargetEnvironment,   //标识希望APC挂在哪个队列
     IN PKKERNEL_ROUTINE KernelRoutine,       //销毁KAPC的函数地址
     IN PKRUNDOWN_ROUTINE RundownRoutine OPTIONAL,      //未使用
     IN PKNORMAL_ROUTINE NormalRoutine,    //用户APC：用户APC总入口；内核APC：函数地址
@@ -84,8 +84,7 @@ VOID KeInitializeApc (
     IN PVOID Context     //用户APC：函数地址；内核APC：NULL
 );
 ```
-### 3.3.2. ApcStateIndex
-与KTHREAD + 0x165的成员同名，但是含义不同。ApcStateIndex有以下4个值：
+### 3.3.2. TargetEnvironment
 * 0：原始环境，即希望APC挂到原始线程的APC队列，ApcStatePointer[0]
 * 1：挂靠环境，即希望APC挂到挂靠线程的APC队列，ApcStatePointer[1]
 * 2：初始化APC时的当前环境，即希望APC挂到当前线程（取初始化时的当前线程即在KeInitializeApc中获取）的APC队列，ApcStatePointer[KTHREAD.ApcStateIndex]
