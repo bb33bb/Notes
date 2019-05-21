@@ -15,10 +15,10 @@
             - [2.4.3.2. 汇编指令读写MSR寄存器](#2432-汇编指令读写msr寄存器)
 - [3. API的调用过程-0环部分](#3-api的调用过程-0环部分)
     - [3.1. 内核模块文件](#31-内核模块文件)
-    - [3.2. 0环相关结构体](#32-0环相关结构体)
-        - [3.2.1. _kTrap_Frame结构体](#321-_ktrap_frame结构体)
-        - [3.2.2. _Ethread、_kThread结构体](#322-_ethread_kthread结构体)
-        - [3.2.3. _kpcr结构体](#323-_kpcr结构体)
+    - [3.2. 相关结构体](#32-相关结构体)
+        - [3.2.1. _KTRAP_FRAME结构体](#321-_ktrap_frame结构体)
+        - [3.2.2. _ETHREAD、_KTHREAD结构体](#322-_ethread_kthread结构体)
+        - [3.2.3. _KPCR结构体](#323-_kpcr结构体)
     - [3.3. 通过中断门进入0环之后：nt!KiSystemService](#33-通过中断门进入0环之后ntkisystemservice)
     - [3.4. 通过快速调用进入0环之后：nt!KiFastCallEntry](#34-通过快速调用进入0环之后ntkifastcallentry)
 - [4. 实践：不通过WindowsAPI调用系统函数](#4-实践不通过windowsapi调用系统函数)
@@ -178,161 +178,16 @@ wrmsr
 * ntoskrnl.exe（10-10-12分页）
 * ntkrnlpa.exe（2-9-9-12分页）
 
-## 3.2. 0环相关结构体
-### 3.2.1. _kTrap_Frame结构体
-用途：保存进入0环时之前的一些寄存器等信息
-```x86asm
-kd> dt _kTrap_Frame
-nt!_KTRAP_FRAME
-   +0x000 DbgEbp           : Uint4B          ; 调试等其他作用
-   +0x004 DbgEip           : Uint4B          ;
-   +0x008 DbgArgMark       : Uint4B          ;
-   +0x00c DbgArgPointer    : Uint4B          ;
-   +0x010 TempSegCs        : Uint4B          ;
-   +0x014 TempEsp          : Uint4B          ;
-   +0x018 Dr0              : Uint4B          ;
-   +0x01c Dr1              : Uint4B          ;
-   +0x020 Dr2              : Uint4B          ;
-   +0x024 Dr3              : Uint4B          ;
-   +0x028 Dr6              : Uint4B          ;
-   +0x02c Dr7              : Uint4B          ;
-   +0x030 SegGs            : Uint4B          ;
-   +0x034 SegEs            : Uint4B          ;
-   +0x038 SegDs            : Uint4B          ;
-   +0x03c Edx              : Uint4B          ;
-   +0x040 Ecx              : Uint4B          ;
-   +0x044 Eax              : Uint4B          ;
-   +0x048 PreviousPreviousMode : Uint4B                             ; Windows中的非易失性寄存器需要在中断例程中先保存
-   +0x04c ExceptionList    : Ptr32 _EXCEPTION_REGISTRATION_RECORD   ;
-   +0x050 SegFs            : Uint4B                                 ;
-   +0x054 Edi              : Uint4B                                 ;
-   +0x058 Esi              : Uint4B                                 ;
-   +0x05c Ebx              : Uint4B                                 ;
-   +0x060 Ebp              : Uint4B                                 ;
-   +0x064 ErrCode          : Uint4B                                 ;
-   +0x068 Eip              : Uint4B   ; 中断门时保存代码段和地址，iret返回时用
-   +0x06c SegCs            : Uint4B   ;
-   +0x070 EFlags           : Uint4B   ;
-   +0x074 HardwareEsp      : Uint4B   ; 中断门时若发生权限切换，保存旧堆栈
-   +0x078 HardwareSegSs    : Uint4B   ;
-   +0x07c V86Es            : Uint4B   ; 虚拟8086模式下保存段寄存器，保护模式下不使用
-   +0x080 V86Ds            : Uint4B   ;
-   +0x084 V86Fs            : Uint4B   ;
-   +0x088 V86Gs            : Uint4B   ;
-```
-### 3.2.2. _Ethread、_kThread结构体
-```x86asm
-kd> dt _KTHREAD
-nt!_KTHREAD
-   +0x000 Header           : _DISPATCHER_HEADER
-   +0x010 MutantListHead   : _LIST_ENTRY
-   +0x018 InitialStack     : Ptr32 Void
-   +0x01c StackLimit       : Ptr32 Void
-   +0x020 Teb              : Ptr32 Void
-   +0x024 TlsArray         : Ptr32 Void
-   +0x028 KernelStack      : Ptr32 Void
-   +0x02c DebugActive      : UChar
-   +0x02d State            : UChar
-   +0x02e Alerted          : [2] UChar
-   +0x030 Iopl             : UChar
-   +0x031 NpxState         : UChar
-   +0x032 Saturation       : Char
-   +0x033 Priority         : Char
-   +0x034 ApcState         : _KAPC_STATE
-   +0x04c ContextSwitches  : Uint4B
-   +0x050 IdleSwapBlock    : UChar
-   +0x051 Spare0           : [3] UChar
-   +0x054 WaitStatus       : Int4B
-   +0x058 WaitIrql         : UChar
-   +0x059 WaitMode         : Char
-   +0x05a WaitNext         : UChar
-   +0x05b WaitReason       : UChar
-   +0x05c WaitBlockList    : Ptr32 _KWAIT_BLOCK
-   +0x060 WaitListEntry    : _LIST_ENTRY
-   +0x060 SwapListEntry    : _SINGLE_LIST_ENTRY
-   +0x068 WaitTime         : Uint4B
-   +0x06c BasePriority     : Char
-   +0x06d DecrementCount   : UChar
-   +0x06e PriorityDecrement : Char
-   +0x06f Quantum          : Char
-   +0x070 WaitBlock        : [4] _KWAIT_BLOCK
-   +0x0d0 LegoData         : Ptr32 Void
-   +0x0d4 KernelApcDisable : Uint4B
-   +0x0d8 UserAffinity     : Uint4B
-   +0x0dc SystemAffinityActive : UChar
-   +0x0dd PowerState       : UChar
-   +0x0de NpxIrql          : UChar
-   +0x0df InitialNode      : UChar
-   +0x0e0 ServiceTable     : Ptr32 Void
-   +0x0e4 Queue            : Ptr32 _KQUEUE
-   +0x0e8 ApcQueueLock     : Uint4B
-   +0x0f0 Timer            : _KTIMER
-   +0x118 QueueListEntry   : _LIST_ENTRY
-   +0x120 SoftAffinity     : Uint4B
-   +0x124 Affinity         : Uint4B
-   +0x128 Preempted        : UChar
-   +0x129 ProcessReadyQueue : UChar
-   +0x12a KernelStackResident : UChar
-   +0x12b NextProcessor    : UChar
-   +0x12c CallbackStack    : Ptr32 Void
-   +0x130 Win32Thread      : Ptr32 Void
-   +0x134 TrapFrame        : Ptr32 _KTRAP_FRAME
-   +0x138 ApcStatePointer  : [2] Ptr32 _KAPC_STATE
-   +0x140 PreviousMode     : Char
-   +0x141 EnableStackSwap  : UChar
-   +0x142 LargeStack       : UChar
-   +0x143 ResourceIndex    : UChar
-   +0x144 KernelTime       : Uint4B
-   +0x148 UserTime         : Uint4B
-   +0x14c SavedApcState    : _KAPC_STATE
-   +0x164 Alertable        : UChar
-   +0x165 ApcStateIndex    : UChar
-   +0x166 ApcQueueable     : UChar
-   +0x167 AutoAlignment    : UChar
-   +0x168 StackBase        : Ptr32 Void
-   +0x16c SuspendApc       : _KAPC
-   +0x19c SuspendSemaphore : _KSEMAPHORE
-   +0x1b0 ThreadListEntry  : _LIST_ENTRY
-   +0x1b8 FreezeCount      : Char
-   +0x1b9 SuspendCount     : Char
-   +0x1ba IdealProcessor   : UChar
-   +0x1bb DisableBoost     : UChar
-```
-### 3.2.3. _kpcr结构体
-CPU控制区，保存CPU状态，每个CPU有一个该结构体
+## 3.2. 相关结构体
+### 3.2.1. _KTRAP_FRAME结构体
+用于保存进入0环时之前的一些寄存器等信息，结构见《内核结构体详解》。
+### 3.2.2. _ETHREAD、_KTHREAD结构体
+线程、进程相关结构体，结构见《内核结构体详解》。
+### 3.2.3. _KPCR结构体
+CPU控制区，保存CPU状态，每个CPU有一个该结构体，结构见《内核结构体详解》。
 * windbg命令`dd KeNumberProcessors`可以查看CPU数量
 * windbg命令`dd KiProcessorBlock`查看kpcr结构体地址，出现了几个有效地址就代表有几个CPU
-```x86asm
-kd> dt _kpcr
-nt!_KPCR
-   +0x000 NtTib            : _NT_TIB
-   +0x01c SelfPcr          : Ptr32 _KPCR
-   +0x020 Prcb             : Ptr32 _KPRCB
-   +0x024 Irql             : UChar
-   +0x028 IRR              : Uint4B
-   +0x02c IrrActive        : Uint4B
-   +0x030 IDR              : Uint4B
-   +0x034 KdVersionBlock   : Ptr32 Void
-   +0x038 IDT              : Ptr32 _KIDTENTRY
-   +0x03c GDT              : Ptr32 _KGDTENTRY
-   +0x040 TSS              : Ptr32 _KTSS
-   +0x044 MajorVersion     : Uint2B
-   +0x046 MinorVersion     : Uint2B
-   +0x048 SetMember        : Uint4B
-   +0x04c StallScaleFactor : Uint4B
-   +0x050 DebugActive      : UChar
-   +0x051 Number           : UChar
-   +0x052 Spare0           : UChar
-   +0x053 SecondLevelCacheAssociativity : UChar
-   +0x054 VdmAlert         : Uint4B
-   +0x058 KernelReserved   : [14] Uint4B
-   +0x090 SecondLevelCacheSize : Uint4B
-   +0x094 HalReserved      : [16] Uint4B
-   +0x0d4 InterruptMode    : Uint4B
-   +0x0d8 Spare1           : UChar
-   +0x0dc KernelReserved2  : [17] Uint4B
-   +0x120 PrcbData         : _KPRCB
-```
+
 ## 3.3. 通过中断门进入0环之后：nt!KiSystemService
 ```x86asm
 .text:00407631                 push    0           ; 填充_kTrap_Frame + 0x64 -> ErrorCode为0
