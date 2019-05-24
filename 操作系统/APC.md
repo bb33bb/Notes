@@ -11,7 +11,10 @@
         - [3.2.1. 函数定义](#321-函数定义)
         - [3.2.2. TargetEnvironment](#322-targetenvironment)
     - [3.3. KeInsertQueueAPC](#33-keinsertqueueapc)
-- [4. APC的执行时机](#4-apc的执行时机)
+- [4. 内核APC的执行](#4-内核apc的执行)
+    - [4.1. 执行时机](#41-执行时机)
+        - [4.1.1. 线程切换](#411-线程切换)
+        - [4.1.2. 系统调用、中断或者异常（_KiServiceExit）](#412-系统调用中断或者异常_kiserviceexit)
 
 <!-- /TOC -->
 # 1. APC的作用：改变线程行为
@@ -52,5 +55,9 @@ VOID KeInitializeApc (
 * 将KAPC挂到相应队列（挂到KAPC的ApcListEntry处）
 * 将KAPC结构中的Inserted置1，标识当前APC已经插入
 * 修正KAPC_STATE结构中的KernelApcPending和UserApcPending。如果APC为内核APC，将KernelApcPending置1。如果APC为用户APC且目标线程位于等待状态、而且是用户（如用户程序自己Sleep、WaitForSingleObject）导致的等待（非内核程序让它等待）、而且可以被唤醒，将UserApcPending置1并唤醒目标线程（从等待链表中摘除，放到调度链表），其它情况下UserApcPending不修正。如果UserApcPending本来为0，又未得到修正，且之后没有其它用户APC的插入导致UserApcPending被置1，该APC会无法得到执行时机
-# 4. APC的执行时机
+# 4. 内核APC的执行
+## 4.1. 执行时机
+### 4.1.1. 线程切换
+SwapContext会判断是否存在内核APC，如果存在，返回KiSwapThread之后，会调用KiDeliverApc来执行内核APC函数
+### 4.1.2. 系统调用、中断或者异常（_KiServiceExit）
 KiServiceExit函数是系统调用、异常或者中断返回用户空间的必经之路，在这个函数中，会通过UserApcPending判断是否存在用户APC，之后调用KiDeliverApc函数执行内核APC函数，之后执行用户APC函数（如果存在）
