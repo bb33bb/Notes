@@ -13,8 +13,14 @@
     - [3.3. KeInsertQueueAPC](#33-keinsertqueueapc)
 - [4. 内核APC的执行](#4-内核apc的执行)
     - [4.1. 执行时机](#41-执行时机)
-        - [4.1.1. 线程切换](#411-线程切换)
+        - [4.1.1. 线程切换时](#411-线程切换时)
         - [4.1.2. 系统调用、中断或者异常（_KiServiceExit）](#412-系统调用中断或者异常_kiserviceexit)
+    - [4.2. 执行APC的函数：KiDeliverApc](#42-执行apc的函数kideliverapc)
+        - [函数参数](#函数参数)
+        - [执行流程](#执行流程)
+    - [一些要点](#一些要点)
+- [用户APC的执行](#用户apc的执行)
+    - [执行时机](#执行时机)
 
 <!-- /TOC -->
 # 1. APC的作用：改变线程行为
@@ -57,7 +63,26 @@ VOID KeInitializeApc (
 * 修正KAPC_STATE结构中的KernelApcPending和UserApcPending。如果APC为内核APC，将KernelApcPending置1。如果APC为用户APC且目标线程位于等待状态、而且是用户（如用户程序自己Sleep、WaitForSingleObject）导致的等待（非内核程序让它等待）、而且可以被唤醒，将UserApcPending置1并唤醒目标线程（从等待链表中摘除，放到调度链表），其它情况下UserApcPending不修正。如果UserApcPending本来为0，又未得到修正，且之后没有其它用户APC的插入导致UserApcPending被置1，该APC会无法得到执行时机
 # 4. 内核APC的执行
 ## 4.1. 执行时机
-### 4.1.1. 线程切换
+### 4.1.1. 线程切换时
 SwapContext会判断是否存在内核APC，如果存在，返回KiSwapThread之后，会调用KiDeliverApc来执行内核APC函数
 ### 4.1.2. 系统调用、中断或者异常（_KiServiceExit）
-KiServiceExit函数是系统调用、异常或者中断返回用户空间的必经之路，在这个函数中，会通过UserApcPending判断是否存在用户APC，之后调用KiDeliverApc函数执行内核APC函数，之后执行用户APC函数（如果存在）
+KiServiceExit函数是系统调用、异常或者中断返回用户空间的必经之路，在这个函数中，会通过UserApcPending判断是否存在用户APC，如果存在，会调用KiDeliverApc函数（该函数会先执行内核APC函数，再执行用户APC函数），如果不存在会直接返回。
+## 4.2. 执行APC的函数：KiDeliverApc
+### 函数参数
+第一个参数为1代表执行内核和用户APC，为0代表只执行内核APC
+### 执行流程
+* 判断第一个链表（内核APC链表）是否为空，否则继续
+* 判断是否正在执行内核APC（KTHREAD.ApcState.KernelApcInProgress），否则继续
+* 判断是否禁用内核APC（KTHREAD.KernelApcDisabled），否则继续
+* 将当前KAPC从链表中摘除
+* 执行KAPC.KernelRoutine，释放KAPC所占空间
+* 更改标识，正在执行内核APC（KTHREAD.ApcState.KernelApcInProgress）
+* 执行KAPC.NormalRoutine，真正执行内核APC函数
+* 更改标识，没有执行内核APC（KTHREAD.ApcState.KernelApcInProgress）
+## 一些要点
+* 由于线程切换时会执行内核APC，所以内核APC一旦插入，很快就会因为线程切换而得到执行
+* 内核APC在内核执行，无需换栈，一个循环就可以全部执行完毕
+# 用户APC的执行
+由于执行用户APC需要在用户空间执行，所以需要进行堆栈切换操作。即从内核空间到用户空间（APC的执行未知），再返回到内核空间，之后如果存在下一个用户APC需要执行，还需要再重复一次这个循环。
+## 执行时机
+KiServiceExit函数。
