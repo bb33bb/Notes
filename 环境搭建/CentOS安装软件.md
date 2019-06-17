@@ -3,6 +3,7 @@
 - [1. Python3](#1-python3)
 - [2. 简易安装第三方SS、SSR](#2-简易安装第三方ssssr)
 - [3. MySQL](#3-mysql)
+- [4. metasploit](#4-metasploit)
 
 <!-- /TOC -->
 # 1. Python3
@@ -70,4 +71,18 @@ sudo service mysqld start
 #配置MySQL允许外部访问：首先配置防火墙，之后use mysql;update user set host = '%' where user ='root';允许任何外部主机访问
 #show global variables like 'port';可查看MySQL服务端口，如果看到的value为0，则说明没有使用密码登录，需要去修改my.cnf，port=3306，重启MySQL服务即可
 ```
-
+# 4. metasploit
+```bash
+# 下载安装
+yum install curl -y
+curl https://raw.githubusercontent.com/rapid7/metasploit-omnibus/master/config/templates/metasploit-framework-wrappers/msfupdate.erb > msfinstall
+chmod 755 msfinstall
+./msfinstall
+# 初始化启动，此时会初始化数据库，由于metasploit使用的数据库无法与root用户绑定，第一次启动必须切换到非root用户，之后可以用root用户启动
+adduser msf
+su msf
+cd /opt/metasploit-framework/bin
+./msfconsole
+# 如果手滑第一次启动用root用户启动了，执行以下命令重置
+# msfdb reinit
+```
