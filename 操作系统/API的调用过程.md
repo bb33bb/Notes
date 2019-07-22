@@ -434,6 +434,8 @@ NTSYSAPI  NTSTATUS NTAPI NtProtectVirtualMemory(
 ### 5.1.3. 两张系统服务表
 * 内核文件（ntoskrl.exe、ntkrnlpa.exe）导出函数的一部分，为常用的系统服务
 * win32k.sys（user32.dll -> gdi32.dll -> win32k.sys）的导出函数的一部分，为与图形显示以及用户界面相关的系统服务
+
+ntoskrl.exe（ntkrnlpa.exe）和win32k.sys其实就是Windows内核的两大构成部分。
 ## 5.2. 解析系统调用号->定位系统服务表中的函数
 ### 5.2.1. 系统调用号结构
 |比特位|31-13|12|11-0|
